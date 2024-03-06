@@ -8,13 +8,13 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract MyCustomToken is ERC20 {
     constructor() ERC20("TokenStaking", "TSC") {
-        _mint(msg.sender, 1e6 * 10**uint256(decimals()));
+        _mint(msg.sender, 1e6 * 10 ** uint256(decimals()));
     }
 }
 
 contract TokenStaking is Ownable, ReentrancyGuard {
     IERC20 public stakingToken;
-    uint256 public constant PERCENTAGE_DENOMINATOR = 100;
+    uint256 public constant PERCENTAGE_DENOMINATOR = 10000;
 
     struct Pool {
         uint256 duration;
@@ -40,17 +40,17 @@ contract TokenStaking is Ownable, ReentrancyGuard {
     constructor() {
         MyCustomToken token = new MyCustomToken();
         stakingToken = token;
-        pools[0].duration = 7 days;
-        pools[0].rewardRate = 570;
+        pools[0].duration = 60;
+        pools[0].rewardRate = 500;
 
-        pools[1].duration = 30 days;
-        pools[1].rewardRate = 690;
+        pools[1].duration = 120;
+        pools[1].rewardRate = 1000;
 
-        pools[2].duration = 90 days;
-        pools[2].rewardRate = 980;
+        pools[2].duration = 240;
+        pools[2].rewardRate = 5000;
 
-        pools[3].duration = 360 days;
-        pools[3].rewardRate = 1200;
+        pools[3].duration = 360;
+        pools[3].rewardRate = 6000;
 
         stakingToken.transfer(msg.sender, 1000000000000000000000);
     }
@@ -80,11 +80,10 @@ contract TokenStaking is Ownable, ReentrancyGuard {
         return a >= b ? a : b;
     }
 
-    function calculateProfit(address user, uint8 poolId)
-        public
-        view
-        returns (uint256)
-    {
+    function calculateProfit(
+        address user,
+        uint8 poolId
+    ) public view returns (uint256) {
         require(poolId >= 0 && poolId < 4, "Invalid pool id");
         Pool storage pool = pools[poolId];
         uint256 userBalance = pool.balances[user];
@@ -97,26 +96,27 @@ contract TokenStaking is Ownable, ReentrancyGuard {
             pool.lastProfitWithdrawalTime[user]
         );
 
-        // uint256 depositTime = pool.depositTimes[user];
         uint256 currentTime = block.timestamp;
+
+        uint256 lastDate = pool.depositTimes[user] + pool.duration;
+        if (currentTime >= lastDate) {
+            currentTime = lastDate;
+        }
+
         uint256 stakedDuration = currentTime - lastActionTime;
+        uint256 rewardRateOfPool = pool.rewardRate;
+        uint256 secondsInPoolDuration = pool.duration;
 
-        uint256 rewardRatePerYear = pool.rewardRate;
-        uint256 secondsInYear = 365 days;
-
-        uint256 rewardRatePerSecond = (rewardRatePerYear * 10**18) /
-            secondsInYear /
+        uint256 rewardRatePerSecond = (rewardRateOfPool * 10 ** 18) /
+            secondsInPoolDuration /
             PERCENTAGE_DENOMINATOR;
         uint256 profit = (stakedDuration * rewardRatePerSecond * userBalance) /
-            10**18;
-        if (stakedDuration < pool.duration) {
-            return profit;
-        } else {
-            return (userBalance * pool.rewardRate) / PERCENTAGE_DENOMINATOR;
-        }
+            10 ** 18;
+
+        return profit;
     }
 
-    function withdraw(uint8 _poolId) external nonReentrant {
+    function withdrawAllAmount(uint8 _poolId) external nonReentrant {
         require(_poolId >= 0 && _poolId < 4, "Invalid pool id");
         Pool storage pool = pools[_poolId];
         uint256 amount = pool.balances[msg.sender];
@@ -126,7 +126,7 @@ contract TokenStaking is Ownable, ReentrancyGuard {
             pool.depositTimes[msg.sender];
         uint256 reward = 0;
         if (stakedDuration >= pool.duration) {
-            reward = calculateReward(amount, pool.rewardRate);
+            reward = calculateProfit(msg.sender, _poolId);
         }
 
         pool.balances[msg.sender] = 0;
@@ -137,29 +137,34 @@ contract TokenStaking is Ownable, ReentrancyGuard {
         emit Withdrawn(msg.sender, amount, reward, _poolId);
     }
 
-    function withdrawSpecificProfit(uint256 amount, uint8 _poolId)
-        external
-        nonReentrant
-    {
+    function withdrawSpecificProfit(
+        uint256 amount,
+        uint8 _poolId
+    ) external nonReentrant {
         require(_poolId >= 0 && _poolId < 4, "Invalid pool id");
 
         uint256 profit = calculateProfit(msg.sender, _poolId);
         require(profit >= amount, "TokenStaking: Not enough profit");
 
-        // Deduct the specific amount from the user's profit
-        pools[_poolId].lastProfitWithdrawalTime[msg.sender] = block.timestamp; // Reset profit calculation basis
+        pools[_poolId].lastProfitWithdrawalTime[msg.sender] = block.timestamp;
 
-        stakingToken.transfer(msg.sender, amount); // Transfer specific profit amount
+        stakingToken.transfer(msg.sender, amount);
 
-        emit ProfitWithdrawn(msg.sender, amount, _poolId); // Emit an event for the profit withdrawal
+        emit ProfitWithdrawn(msg.sender, amount, _poolId);
     }
 
-    function calculateReward(uint256 _amount, uint256 _rewardRate)
-        private
-        pure
-        returns (uint256)
-    {
+    function calculateReward(
+        uint256 _amount,
+        uint256 _rewardRate
+    ) private pure returns (uint256) {
         return (_amount * _rewardRate) / 10000;
+    }
+
+    function showMyBalancesInPool(
+        uint256 _poolId
+    ) public view returns (uint256) {
+        Pool storage pool = pools[_poolId];
+        return pool.balances[msg.sender];
     }
 
     function withdrawProfit(uint8 _poolId) external nonReentrant {
@@ -167,9 +172,15 @@ contract TokenStaking is Ownable, ReentrancyGuard {
 
         uint256 profit = calculateProfit(msg.sender, _poolId);
         require(profit > 0, "No profit available for withdrawal");
-
         Pool storage pool = pools[_poolId];
-        pool.depositTimes[msg.sender] = block.timestamp;
+
+
+        uint256 stakedDuration = block.timestamp -
+            pool.depositTimes[msg.sender];
+
+        require(stakedDuration <= pool.duration, "Pool duration complete u can withdrawal all amount");
+
+        pool.lastProfitWithdrawalTime[msg.sender] = block.timestamp;
 
         stakingToken.transfer(msg.sender, profit);
 
