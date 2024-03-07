@@ -15,6 +15,21 @@ contract MyCustomToken is ERC20 {
 contract TokenStaking is Ownable, ReentrancyGuard {
     IERC20 public stakingToken;
     uint256 public constant PERCENTAGE_DENOMINATOR = 10000;
+    mapping(address => bool) public validForReferrer;
+    mapping(address => address) public referredBy;
+    mapping(address => address[]) public referrals;
+
+    function addReferral(address referrer) external {
+        require(referrer != msg.sender, "You cannot refer yourself");
+        require(referredBy[msg.sender] == address(0), "Referrer already set");
+        require(
+            validForReferrer[referrer],
+            "To use this  referral account this account must stake some token in any pool"
+        );
+        stakingToken.transfer(msg.sender, 300000000000000000000);
+        referredBy[msg.sender] = referrer;
+        referrals[referrer].push(msg.sender);
+    }
 
     struct Pool {
         uint256 duration;
@@ -68,7 +83,7 @@ contract TokenStaking is Ownable, ReentrancyGuard {
             stakingToken.allowance(msg.sender, address(this)) >= _amount,
             "Insufficient allowance"
         );
-
+        validForReferrer[msg.sender] = true;
         stakingToken.transferFrom(msg.sender, address(this), _amount);
         pool.balances[msg.sender] += _amount;
         pool.depositTimes[msg.sender] = block.timestamp;
@@ -129,6 +144,24 @@ contract TokenStaking is Ownable, ReentrancyGuard {
             reward = calculateProfit(msg.sender, _poolId);
         }
 
+        uint256 level1Profit = (reward * 5) / 100; 
+        uint256 level2Profit = (reward * 3) / 100; 
+        uint256 level3Profit = (reward * 1) / 100; 
+
+        address level1Ref = referredBy[msg.sender];
+        address level2Ref = referredBy[level1Ref];
+        address level3Ref = referredBy[level2Ref];
+
+        if (level1Ref != address(0)) {
+            stakingToken.transfer(level1Ref, level1Profit);
+        }
+        if (level2Ref != address(0)) {
+            stakingToken.transfer(level2Ref, level2Profit);
+        }
+        if (level3Ref != address(0)) {
+            stakingToken.transfer(level3Ref, level3Profit);
+        }
+
         pool.balances[msg.sender] = 0;
         pool.depositTimes[msg.sender] = 0;
 
@@ -152,19 +185,12 @@ contract TokenStaking is Ownable, ReentrancyGuard {
 
         emit ProfitWithdrawn(msg.sender, amount, _poolId);
     }
-
-    function calculateReward(
-        uint256 _amount,
-        uint256 _rewardRate
-    ) private pure returns (uint256) {
-        return (_amount * _rewardRate) / 10000;
-    }
-
     function showMyBalancesInPool(
+        address _addr,
         uint256 _poolId
     ) public view returns (uint256) {
         Pool storage pool = pools[_poolId];
-        return pool.balances[msg.sender];
+        return pool.balances[_addr];
     }
 
     function withdrawProfit(uint8 _poolId) external nonReentrant {
@@ -172,16 +198,36 @@ contract TokenStaking is Ownable, ReentrancyGuard {
 
         uint256 profit = calculateProfit(msg.sender, _poolId);
         require(profit > 0, "No profit available for withdrawal");
-        Pool storage pool = pools[_poolId];
 
+        Pool storage pool = pools[_poolId];
 
         uint256 stakedDuration = block.timestamp -
             pool.depositTimes[msg.sender];
 
-        require(stakedDuration <= pool.duration, "Pool duration complete u can withdrawal all amount");
+        require(
+            stakedDuration <= pool.duration,
+            "Pool duration complete u can withdrawal all amount"
+        );
+
+        uint256 level1Profit = (profit * 5) / 100; 
+        uint256 level2Profit = (profit * 3) / 100; 
+        uint256 level3Profit = (profit * 1) / 100; 
+
+        address level1Ref = referredBy[msg.sender];
+        address level2Ref = referredBy[level1Ref];
+        address level3Ref = referredBy[level2Ref];
+
+        if (level1Ref != address(0)) {
+            stakingToken.transfer(level1Ref, level1Profit);
+        }
+        if (level2Ref != address(0)) {
+            stakingToken.transfer(level2Ref, level2Profit);
+        }
+        if (level3Ref != address(0)) {
+            stakingToken.transfer(level3Ref, level3Profit);
+        }
 
         pool.lastProfitWithdrawalTime[msg.sender] = block.timestamp;
-
         stakingToken.transfer(msg.sender, profit);
 
         emit ProfitWithdrawn(msg.sender, profit, _poolId);

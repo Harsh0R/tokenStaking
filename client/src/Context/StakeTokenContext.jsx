@@ -13,29 +13,26 @@ export const StakeTokenContext = createContext();
 export const StakeTokenProvider = ({ children }) => {
   const [account, setAccount] = useState("");
 
-  const fetchData = async () => {
-    try {
-      window.ethereum.on("chainChanged", () => {
-        window.location.reload();
-      });
-
-      window.ethereum.on("accountsChanged", () => {
-        window.location.reload();
-      });
-
-      const connectAccount = await connectWallet();
-      const contract = await connectingWithContract();
-
-      setAccount(connectAccount);
-
-    } catch (error) {
-      console.log("Error in fetching account in StakeTokenContext...", error);
-    }
-  };
-
-
   useEffect(() => {
+    const fetchData = async () => {
+      try {
+        window.ethereum.on("chainChanged", () => window.location.reload());
+        window.ethereum.on("accountsChanged", () => window.location.reload());
+
+        const connectAccount = await connectWallet();
+        setAccount(connectAccount);
+      } catch (error) {
+        console.log("Error in fetching account in StakeTokenContext", error);
+      }
+    };
+
     fetchData();
+
+    // Cleanup function to remove event listeners when component unmounts
+    return () => {
+      window.ethereum.removeListener("chainChanged", () => window.location.reload());
+      window.ethereum.removeListener("accountsChanged", () => window.location.reload());
+    };
   }, []);
 
 
@@ -53,26 +50,6 @@ export const StakeTokenProvider = ({ children }) => {
       console.error("Error occurred fetching pools data:", error);
     }
   };
-
-  // const stake = async (poolIdx, amount = 50) => {
-  //   try {
-  //     let allowanceAmount = hasValideAllowance(account);
-  //     allowanceAmount = toWei(allowanceAmount)
-  //     console.log("allowanceAmount = ", allowanceAmount);
-  //     if (allowanceAmount < amount) {
-  //       console.log("Increase allowanceAmount = ", allowanceAmount);
-
-  //       increaseAllowance(50);
-  //     }
-  //     const amount1 = toWei(amount);
-  //     const contract = await connectingWithContract();
-  //     const tx = contract.stake(amount1, poolIdx);
-
-  //     console.log("Stake = ", amount1, " idx =", poolIdx, "tx ===", tx);
-  //   } catch (error) {
-  //     console.error("Error occurred fetching pools data:", error);
-  //   }
-  // };
 
   const stake = async (poolIdx, amount = 50) => {
     try {
@@ -106,12 +83,24 @@ export const StakeTokenProvider = ({ children }) => {
 
 
 
-  const showMyBalancesInPool = async () => {
+  const showOnePoolBalances = async (account1, index) => {
+    try {
+      const contract = await connectingWithContract();
+      console.log("Address111 === ", account1);
+      const results = await contract.showMyBalancesInPool(account1, index);
+      const results1 = await toEth(results);
+      console.log("BA;amce = ", results1);
+      return results1;
+    } catch (error) {
+      console.error("Error occurred fetching one showMyBalancesInPool data:", error);
+    }
+  };
+  const showMyBalancesInPool = async (account1) => {
     try {
       const contract = await connectingWithContract();
       const poolIndices = [0, 1, 2, 3];
-
-      const poolPromises = poolIndices.map(index => contract.showMyBalancesInPool(index));
+      // console.log("Address111 === " , account1);
+      const poolPromises = poolIndices.map(index => contract.showMyBalancesInPool(account1, index));
       const results = await Promise.all(poolPromises);
       const results1 = await Promise.all(results.map(idx => toEth(idx)));
 
@@ -119,7 +108,7 @@ export const StakeTokenProvider = ({ children }) => {
       // console.log("Res1 ===", results1);
       return results1;
     } catch (error) {
-      console.error("Error occurred fetching pools data:", error);
+      console.error("Error occurred fetching showMyBalancesInPool data:", error);
     }
   };
 
@@ -130,13 +119,20 @@ export const StakeTokenProvider = ({ children }) => {
 
       const poolPromises = poolIndices.map(index => contract.calculateProfit(account, index));
       const results = await Promise.all(poolPromises);
-      
+
       const results1 = await Promise.all(results.map(idx => toEth(idx)));
       // console.log("Calculate profit = ",poolPromises);
       return results1;
     } catch (error) {
       console.error("Error occurred fetching Calculate profit =:", error);
     }
+  };
+
+  const addReferral = async (referrerAddress) => {
+    const contract = await connectingWithContract();
+    const tx = await contract.addReferral(referrerAddress);
+    await tx.wait();
+    // Handle post-transaction logic or state updates here
   };
 
   const withdrawProfit = async (index) => {
@@ -159,6 +155,8 @@ export const StakeTokenProvider = ({ children }) => {
       console.error("Error occurred fetching withdrawAllAmount =:", error);
     }
   };
+
+
 
   const hasValideAllowance = async (owner) => {
     try {
@@ -215,7 +213,9 @@ export const StakeTokenProvider = ({ children }) => {
         showMyBalancesInPool,
         calculateProfit,
         withdrawProfit,
-        withdrawAllAmount
+        withdrawAllAmount,
+        addReferral,
+        showOnePoolBalances
       }}
     >
       {children}

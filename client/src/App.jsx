@@ -8,7 +8,6 @@ function App() {
 
   return (
     <StakeTokenProvider>
-      App
       <Home></Home>
     </StakeTokenProvider>
   )
