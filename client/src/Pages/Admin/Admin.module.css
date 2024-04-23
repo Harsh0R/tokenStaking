@@ -1,0 +1,42 @@
+.container {
+    color: white;
+    background-color: #1c1c1e;
+    padding: 20px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+table,
+th,
+td {
+    border: 1px solid #343436;
+}
+
+th,
+td {
+    text-align: left;
+    padding: 8px;
+}
+
+th {
+    background-color: #161618;
+}
+
+tr:nth-child(odd) {
+    background-color: #2c2c2e;
+}
+
+tr:nth-child(even) {
+    background-color: #212122;
+}
+
+.poolname {
+    color: #3273dc;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+/* Add more styles as per your design requirements */

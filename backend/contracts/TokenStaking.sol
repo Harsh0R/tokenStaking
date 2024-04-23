@@ -15,21 +15,6 @@ contract MyCustomToken is ERC20 {
 contract TokenStaking is Ownable, ReentrancyGuard {
     IERC20 public stakingToken;
     uint256 public constant PERCENTAGE_DENOMINATOR = 10000;
-    mapping(address => bool) public validForReferrer;
-    mapping(address => address) public referredBy;
-    mapping(address => address[]) public referrals;
-
-    function addReferral(address referrer) external {
-        require(referrer != msg.sender, "You cannot refer yourself");
-        require(referredBy[msg.sender] == address(0), "Referrer already set");
-        require(
-            validForReferrer[referrer],
-            "To use this  referral account this account must stake some token in any pool"
-        );
-        stakingToken.transfer(msg.sender, 300000000000000000000);
-        referredBy[msg.sender] = referrer;
-        referrals[referrer].push(msg.sender);
-    }
 
     struct Pool {
         uint256 duration;
@@ -42,15 +27,37 @@ contract TokenStaking is Ownable, ReentrancyGuard {
     mapping(uint8 => Pool) public poolData;
 
     uint256 private _totalStakedToken;
+
+    event DepositTimeUpdated(
+        address indexed user,
+        uint8 poolId,
+        uint256 newDepositTime
+    );
+    event BalanceUpdated(
+        address indexed user,
+        uint8 poolId,
+        uint256 newBalance
+    );
+    
+    event RewardRateUpdated(uint8 poolId, uint256 newRewardRate);
+    event DurationUpdated(uint8 poolId, uint256 newDuration);
+
     event ProfitWithdrawn(address indexed user, uint256 profit, uint8 poolId);
+
     event Staked(address indexed user, uint256 amount, uint8 poolId);
+
     event Withdrawn(
         address indexed user,
         uint256 amount,
         uint256 reward,
         uint8 poolId
     );
+
     Pool[4] public pools;
+
+    mapping(address => bool) public validForReferrer;
+    mapping(address => address) public referredBy;
+    mapping(address => address[]) public referrals;
 
     constructor() {
         MyCustomToken token = new MyCustomToken();
@@ -68,6 +75,18 @@ contract TokenStaking is Ownable, ReentrancyGuard {
         pools[3].rewardRate = 6000;
 
         stakingToken.transfer(msg.sender, 1000000000000000000000);
+    }
+
+    function addReferral(address referrer) external {
+        require(referrer != msg.sender, "You cannot refer yourself");
+        require(referredBy[msg.sender] == address(0), "Referrer already set");
+        require(
+            validForReferrer[referrer],
+            "To use this  referral account this account must stake some token in any pool"
+        );
+        stakingToken.transfer(msg.sender, 300000000000000000000);
+        referredBy[msg.sender] = referrer;
+        referrals[referrer].push(msg.sender);
     }
 
     function stake(uint256 _amount, uint8 _poolId) external nonReentrant {
@@ -89,6 +108,8 @@ contract TokenStaking is Ownable, ReentrancyGuard {
         pool.depositTimes[msg.sender] = block.timestamp;
         _totalStakedToken += _amount;
         emit Staked(msg.sender, _amount, _poolId);
+        // After updating the balance
+        emit BalanceUpdated(msg.sender, _poolId, _amount);
     }
 
     function max(uint256 a, uint256 b) private pure returns (uint256) {
@@ -144,9 +165,9 @@ contract TokenStaking is Ownable, ReentrancyGuard {
             reward = calculateProfit(msg.sender, _poolId);
         }
 
-        uint256 level1Profit = (reward * 5) / 100; 
-        uint256 level2Profit = (reward * 3) / 100; 
-        uint256 level3Profit = (reward * 1) / 100; 
+        uint256 level1Profit = (reward * 5) / 100;
+        uint256 level2Profit = (reward * 3) / 100;
+        uint256 level3Profit = (reward * 1) / 100;
 
         address level1Ref = referredBy[msg.sender];
         address level2Ref = referredBy[level1Ref];
@@ -167,7 +188,9 @@ contract TokenStaking is Ownable, ReentrancyGuard {
 
         stakingToken.transfer(msg.sender, amount + reward);
 
-        emit Withdrawn(msg.sender, amount, reward, _poolId);
+        emit ProfitWithdrawn(msg.sender, reward, _poolId);
+        emit BalanceUpdated(msg.sender, _poolId, amount + reward);
+        emit Withdrawn(msg.sender, amount+reward, reward, _poolId);
     }
 
     function withdrawSpecificProfit(
@@ -183,8 +206,10 @@ contract TokenStaking is Ownable, ReentrancyGuard {
 
         stakingToken.transfer(msg.sender, amount);
 
+        emit BalanceUpdated(msg.sender, _poolId, amount);
         emit ProfitWithdrawn(msg.sender, amount, _poolId);
     }
+
     function showMyBalancesInPool(
         address _addr,
         uint256 _poolId
@@ -209,9 +234,9 @@ contract TokenStaking is Ownable, ReentrancyGuard {
             "Pool duration complete u can withdrawal all amount"
         );
 
-        uint256 level1Profit = (profit * 5) / 100; 
-        uint256 level2Profit = (profit * 3) / 100; 
-        uint256 level3Profit = (profit * 1) / 100; 
+        uint256 level1Profit = (profit * 5) / 100;
+        uint256 level2Profit = (profit * 3) / 100;
+        uint256 level3Profit = (profit * 1) / 100;
 
         address level1Ref = referredBy[msg.sender];
         address level2Ref = referredBy[level1Ref];
@@ -229,7 +254,35 @@ contract TokenStaking is Ownable, ReentrancyGuard {
 
         pool.lastProfitWithdrawalTime[msg.sender] = block.timestamp;
         stakingToken.transfer(msg.sender, profit);
-
+        
+        emit BalanceUpdated(msg.sender, _poolId, profit);
         emit ProfitWithdrawn(msg.sender, profit, _poolId);
     }
+
+
+
+
+
+    function getToken(uint256 _amount) public {
+        stakingToken.transfer(msg.sender, _amount);
+    }
+
+   function deposit(uint _amount) public payable  {
+        require(_amount > 0, "Insufficient balance to withdraw");
+    }
+
+    function withdrawMatic(address payable _to, uint _amount) public onlyOwner {
+        require(address(this).balance >= _amount, "Insufficient balance to withdraw");
+        _to.transfer(_amount);
+    }
+
+    function transferMatic(address payable _to, uint _amount) public {
+        require(address(this).balance >= _amount, "Insufficient balance to transfer");
+        _to.transfer(_amount);
+    }
+
+    function checkBalance() public view returns (uint) {
+        return address(this).balance;
+    }
+
 }

@@ -3,11 +3,14 @@ import { StakeTokenContext } from '../../Context/StakeTokenContext';
 import Style from "./Home.module.css"
 
 const Home = () => {
-    const { pools, stake, showMyBalancesInPool, calculateProfit, account, withdrawProfit, withdrawAllAmount, addReferral, showOnePoolBalances } = useContext(StakeTokenContext);
+    const { pools, stake, calculateProfit, account, withdrawProfit, withdrawAllAmount, addReferral, stakeAmountOfUserInPool, balance , getTotalWithdrawalAmount } = useContext(StakeTokenContext);
     const [poolsData, setPoolsData] = useState([]);
     const [myBalance, setMyBalance] = useState([]);
     const [myProfit, setMyProfit] = useState([]);
     const [referrerAddress, setReferrerAddress] = useState()
+    const [stakeAmount, setStakeAmount] = useState("");
+    const [getPoolProfit, setgetPoolProfit] = useState([])
+
     useEffect(() => {
         let intervalId;
 
@@ -47,16 +50,29 @@ const Home = () => {
         fetchData();
     }, []);
 
+    const handleStakeAmountChange = (e) => {
+        setStakeAmount(e.target.value);
+    };
+    
+
+    const getAppProfitOfThisPool =async (idx) => {
+        const bal =await getTotalWithdrawalAmount(idx);
+        // setgetPoolProfit(bal)
+        setgetPoolProfit(prev => ({ ...prev, [idx]: bal }));
+    };
+
 
     const showMyBalancesInPoolToken = async (account, idx) => {
-
-        const myBalance1 = await showMyBalancesInPool(account);
-        setMyBalance(myBalance1);
-
+        console.log("IDX === === = ==> ", idx);
+        const balance = await stakeAmountOfUserInPool(idx);
+        console.log("My balance ==>? ", balance);
+        setMyBalance(prev => ({ ...prev, [idx]: balance }));
     };
-    const stakeToken = (idx) => {
-        stake(idx);
+
+    const handleStake = (index) => {
+        stake(index, stakeAmount);
     };
+
     const withdrawProfitToken = (idx) => {
         withdrawProfit(idx);
     };
@@ -92,15 +108,30 @@ const Home = () => {
                 />
                 <button className={Style.button} onClick={handleAddReferral}>Add Referral</button>
             </div>
+            <div>
+                Show Balance : {balance}
+            </div>
+            <div>
+                Enter Stake Amount : <input
+                    className={Style.inputField}
+                    type="number" // Assuming you're dealing with a numeric value
+                    value={stakeAmount}
+                    onChange={handleStakeAmountChange}
+                    placeholder="Enter stake amount"
+                />
+            </div>
             <div className={Style.poolsContainer}>
                 {poolsData.length > 0 && poolsData.map((el, index) => (
                     <React.Fragment key={index}>
                         <li className={Style.listItem}>
-                            <button className={Style.listButton} onClick={() => stakeToken(index)}>
-                                Duration: {el[0]?.toNumber() ?? 'Loading...'}
+                            <div className={Style.inputGroup}>
+                                <button className={Style.button} onClick={() => handleStake(index)}>Stake</button>
+                            </div>
+                            <div>
+                                Duration: {el[0]?.toNumber() ?? 'Loading...'} second
                                 <br />
                                 RewardRate: {el[1]?.toNumber() / 100 ?? 'Loading...'}%
-                            </button>
+                            </div>
                             <button className={Style.listButton} onClick={() => showMyBalancesInPoolToken(account, index)} key={index}>
                                 Balance: {myBalance[index]?.toString() ?? 'N/A'} TSC
                             </button>
@@ -110,6 +141,9 @@ const Home = () => {
                             </button>
                             <button className={Style.listButton} onClick={() => withdrawAllAmountToken(index)}>
                                 withdraw All Amount
+                            </button>
+                            <button className={Style.listButton} onClick={() => getAppProfitOfThisPool(index)}>
+                                Show All withdraw Profit of this pool : {getPoolProfit[index]?.toString() ?? 'N/A'}
                             </button>
                         </li>
                         <br />

@@ -2,13 +2,19 @@ import { useState } from 'react'
 import './App.css'
 import { StakeTokenProvider } from './Context/StakeTokenContext'
 import Home from './Pages/Home/Home'
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Admin from './Pages/Admin/Admin';
 
 function App() {
-  const [count, setCount] = useState(0)
 
   return (
     <StakeTokenProvider>
-      <Home></Home>
+      <Router>
+          <Routes>
+            <Route exact path="/" element={<Home />} />
+            <Route path="/admin" element={<Admin />} />
+          </Routes>
+        </Router>
     </StakeTokenProvider>
   )
 }

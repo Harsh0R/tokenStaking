@@ -1,4 +1,5 @@
 import { useEffect, useState, React, createContext } from "react";
+import { createClient } from "urql"
 import {
   connectWallet,
   checkIfWalletConnected,
@@ -12,6 +13,7 @@ export const StakeTokenContext = createContext();
 
 export const StakeTokenProvider = ({ children }) => {
   const [account, setAccount] = useState("");
+  const [balance, setBalance] = useState()
 
   useEffect(() => {
     const fetchData = async () => {
@@ -21,6 +23,7 @@ export const StakeTokenProvider = ({ children }) => {
 
         const connectAccount = await connectWallet();
         setAccount(connectAccount);
+        balanceOf(connectAccount);
       } catch (error) {
         console.log("Error in fetching account in StakeTokenContext", error);
       }
@@ -34,7 +37,6 @@ export const StakeTokenProvider = ({ children }) => {
       window.ethereum.removeListener("accountsChanged", () => window.location.reload());
     };
   }, []);
-
 
 
   const pools = async () => {
@@ -51,7 +53,7 @@ export const StakeTokenProvider = ({ children }) => {
     }
   };
 
-  const stake = async (poolIdx, amount = 50) => {
+  const stake = async (poolIdx, amount) => {
     try {
       // Fetch the current allowance
       let allowanceAmount = await hasValideAllowance(account);
@@ -80,9 +82,6 @@ export const StakeTokenProvider = ({ children }) => {
     }
   };
 
-
-
-
   const showOnePoolBalances = async (account1, index) => {
     try {
       const contract = await connectingWithContract();
@@ -95,6 +94,7 @@ export const StakeTokenProvider = ({ children }) => {
       console.error("Error occurred fetching one showMyBalancesInPool data:", error);
     }
   };
+
   const showMyBalancesInPool = async (account1) => {
     try {
       const contract = await connectingWithContract();
@@ -145,6 +145,7 @@ export const StakeTokenProvider = ({ children }) => {
       console.error("Error occurred fetching withdrawProfit =:", error);
     }
   };
+
   const withdrawAllAmount = async (index) => {
     try {
       const contract = await connectingWithContract();
@@ -155,8 +156,6 @@ export const StakeTokenProvider = ({ children }) => {
       console.error("Error occurred fetching withdrawAllAmount =:", error);
     }
   };
-
-
 
   const hasValideAllowance = async (owner) => {
     try {
@@ -176,12 +175,11 @@ export const StakeTokenProvider = ({ children }) => {
     }
   }
 
-
   const increaseAllowance = async (amount) => {
     try {
       const contractObj = await connectingWithContract();
       const address = await contractObj.stakingToken();
-
+      console.log(":Token Address ==> " , address);
       const tokenContractObj = await tokenContract(address);
       const data = await tokenContractObj.approve(
         smartContractAddress,
@@ -194,20 +192,118 @@ export const StakeTokenProvider = ({ children }) => {
     }
   }
 
+  const balanceOf = async (account1 = amount) => {
+    try {
+      const contractObj = await connectingWithContract();
+      const address = await contractObj.stakingToken();
+
+      const tokenContractObj = await tokenContract(address);
+      const data = await tokenContractObj.balanceOf(
+        account1
+      );
+      console.log("balance = ", data);
+      const result = await toEth(data);
+      setBalance(result)
+      // return result;
+    } catch (e) {
+      return console.log("Error at Increase allowence = ", e);
+    }
+  }
+
   const toWei = async (amount) => {
     const toWie = ethers.utils.parseUnits((amount).toString());
     console.log("toWie = ", toWie.toString());
     return toWie.toString();
   }
+
   const toEth = async (amount) => {
     const toEth = ethers.utils.formatUnits(amount, 18);
     return toEth.toString();
   }
 
+  // GraphQL
+
+  const QueryUrl = "https://api.studio.thegraph.com/query/56822/tokenstakinggraph/0.0.10"
+  const client = createClient({
+    url: QueryUrl
+  });
+
+  const stakeAmountOfUserInPool = async (poolId, user = account) => {
+    console.log("Acc and PoolId = ", user, "+>", poolId);
+
+    const query = `{
+      stakedAmounts: stakeds(where: {user: "${user}", poolId:${poolId}}) {
+        amount
+      }
+      withdrawnAmounts: withdrawns(where: {user:"${user}" , poolId:${poolId} }) {
+        amount
+      }
+    }`;
+
+    const { data } = await client.query(query).toPromise();
+
+    const totalStaked = data.stakedAmounts.reduce((acc, curr) => acc + BigInt(curr.amount), BigInt(0));
+
+    const totalWithdrawn = data.withdrawnAmounts.reduce((acc, curr) => acc + BigInt(curr.amount), BigInt(0));
+
+    const currentStakedAmount = totalStaked - totalWithdrawn;
+
+    const result = await toEth(currentStakedAmount);
+    console.log(`Current Staked Amount: ${result} Ether`);
+    if (result < 0) {
+      return 0;
+    } else {
+      return result;
+    }
+  };
+
+  const getTotalWithdrawalAmount = async (poolId, user = account) => {
+    const query = `{
+      profitWithdrawns(where: {user:"${user}" , poolId:${poolId}}) {
+        profit
+      }
+    }`
+    try {
+      const { data } = await client.query(query).toPromise();
+
+      if (data && data.profitWithdrawns) {
+        const totalProfitWei = data.profitWithdrawns.reduce((acc, curr) => acc + BigInt(curr.profit), BigInt(0));
+
+        const totalProfitEther = await toEth(totalProfitWei);
+
+        console.log(`Total Withdrawal Amount: ${totalProfitEther.toString()} Ether`);
+
+        return totalProfitEther.toString();
+      }
+    } catch (error) {
+      console.error("Failed to fetch total withdrawal amount:", error);
+      return "0";
+    }
+
+  }
+
+  const getAllStakeData = async () => {
+    const query = `{
+      userDatas {
+        poolId
+        user
+        withdrawProfit
+        currentStake
+        transactionHash
+        blockTimestamp
+      }
+    }`
+
+    const { data } = await client.query(query).toPromise();
+  }
+
+
+
   return (
     <StakeTokenContext.Provider
       value={{
         account,
+        balance,
         pools,
         stake,
         showMyBalancesInPool,
@@ -215,7 +311,10 @@ export const StakeTokenProvider = ({ children }) => {
         withdrawProfit,
         withdrawAllAmount,
         addReferral,
-        showOnePoolBalances
+        showOnePoolBalances,
+        stakeAmountOfUserInPool,
+        balanceOf,
+        getTotalWithdrawalAmount
       }}
     >
       {children}

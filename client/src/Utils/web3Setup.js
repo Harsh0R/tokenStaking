@@ -78,6 +78,7 @@ export const connectingWithContract = async () => {
 };
 
 export const tokenContract = async (address) => {
+    console.log("Token Address === ", address);
     const provider = new ethers.providers.Web3Provider(window.ethereum);
     const { ethereum } = window;
     if (ethereum) {
